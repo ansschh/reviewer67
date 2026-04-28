@@ -1,0 +1,26 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Secrets — never commit
+.env
+.env.local
+.env.*.local
+
+# Data, caches, generated outputs
+data/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.DS_Store
+*.sqlite
+*.sqlite-journal
+
+# Personal paper drops
+paper.pdf
+abstract.txt
+scrape*.log
