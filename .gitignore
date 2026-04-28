@@ -24,3 +24,7 @@ dist/
 paper.pdf
 abstract.txt
 scrape*.log
+calibrate*.log
+
+# Claude Code session files
+.claude/

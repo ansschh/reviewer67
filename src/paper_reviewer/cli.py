@@ -126,6 +126,17 @@ def _cmd_calibrate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_calibrate_boundary(args: argparse.Namespace) -> int:
+    calibrate_mod.calibrate_boundary(
+        prev_path=args.from_path,
+        n=args.n,
+        model=args.model,
+        persona_set=args.persona_set,
+        cluster_set=args.cluster_set,
+    )
+    return 0
+
+
 def _cmd_train_predictor(args: argparse.Namespace) -> int:
     out = predictor_mod.train(max_papers=args.max_papers)
     print(f"saved -> {out}")
@@ -173,6 +184,14 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--persona-set", default="panel", dest="persona_set")
     s.add_argument("--cluster-set", default="default", dest="cluster_set")
     s.set_defaults(func=_cmd_calibrate)
+
+    s = sub.add_parser("calibrate-boundary", help="Stage 3: upgrade worst-disagreement boundary cases to full Opus panel.")
+    s.add_argument("--from", default=None, dest="from_path", help="Path to a prior calibration.json")
+    s.add_argument("--n", type=int, default=20)
+    s.add_argument("--model", default=None)
+    s.add_argument("--persona-set", default="panel", dest="persona_set")
+    s.add_argument("--cluster-set", default="default", dest="cluster_set")
+    s.set_defaults(func=_cmd_calibrate_boundary)
 
     s = sub.add_parser("train-predictor", help="Train accept/reject classifier on scraped data.")
     s.add_argument("--max-papers", type=int, default=4000, dest="max_papers")

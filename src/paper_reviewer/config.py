@@ -9,16 +9,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-VENUES: list[str] = [
-    "ICLR.cc/2024/Conference",
-    "ICLR.cc/2025/Conference",
-    "ICLR.cc/2026/Conference",
-    "NeurIPS.cc/2024/Conference",
-    "NeurIPS.cc/2025/Conference",
-    "ICML.cc/2025/Conference",
-    # ICML.cc/2024: didn't release reviews publicly on OpenReview.
-    # ICML.cc/2026: review cycle still open at time of writing.
-]
+# Venue list lives in venues.py as a registry of VenueSpec objects (per-venue
+# API version, submission invitation, schema details). This shim keeps the
+# legacy `VENUES: list[str]` import working — prefer importing from .venues.
+from .venues import venue_ids as _venue_ids
+VENUES: list[str] = _venue_ids()
 
 DATA_DIR = Path(os.environ.get("PR_DATA_DIR", "./data")).resolve()
 

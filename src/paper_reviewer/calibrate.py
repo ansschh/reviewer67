@@ -395,3 +395,106 @@ def calibrate(
     print(f"\n  full result -> {out}")
 
     return result
+
+
+# ---- boundary-case upgrade ("Stage 3") --------------------------------------
+
+def calibrate_boundary(
+    prev_path: str | Path = None,
+    n: int = 20,
+    model: str | None = None,
+    persona_set: str = "panel",
+    cluster_set: str = "default",
+) -> dict:
+    """Stage 3: take the N papers from a prior calibration where the cheap
+    panel was most wrong (|sim_avg - real_avg| largest) and re-run them with
+    the full production panel (5× Opus reviewers + GPT-5 meta).
+
+    Tells you whether the production pipeline meaningfully closes the gap or
+    whether boundary cases are inherently noisy. If full-panel ρ on this
+    subset >> cheap-panel ρ, production is worth the extra cost. If not,
+    you've hit a fundamental signal limit and should manage user expectations.
+    """
+    import asyncio
+    from .extract import download_pdf, extract_to_cache
+    from .review import run_panel
+    from .personas import load_personas as _lp
+    from .mine import load_clusters as _lc
+
+    prev_path = Path(prev_path or (PATHS.calibration / "calibration.json"))
+    prev = json.loads(prev_path.read_text(encoding="utf-8"))
+    pairs = prev["pairs"]
+    boundary = sorted(pairs, key=lambda p: -abs(p["sim_avg"] - p["real_avg"]))[:n]
+    print(f"selected {len(boundary)} boundary cases (max |Δrating| = "
+          f"{abs(boundary[0]['sim_avg'] - boundary[0]['real_avg']):.2f})")
+
+    personas = _lp(persona_set)
+    clusters = _lc(cluster_set)
+
+    upgraded = []
+    for p in tqdm(boundary, desc="full-panel boundary"):
+        try:
+            pdf = download_pdf(p["forum_id"])
+            text = extract_to_cache(pdf).read_text(encoding="utf-8")[:60_000]
+        except Exception as e:
+            print(f"  skip {p['forum_id']}: {e!r}")
+            continue
+        try:
+            result = asyncio.run(run_panel(
+                paper_text=text,
+                paper_id=p["forum_id"],
+                personas=personas,
+                clusters=clusters,
+                venue=p["venue"],
+                model=model or REVIEW_MODEL,
+            ))
+        except Exception as e:
+            print(f"  panel failed on {p['forum_id']}: {e!r}")
+            continue
+        upgraded.append({
+            "forum_id": p["forum_id"],
+            "real_avg": p["real_avg"],
+            "accepted": p["accepted"],
+            "cheap_sim_avg": p["sim_avg"],
+            "full_sim_avg": result.avg_rating,
+            "full_accept_prob": result.accept_prob,
+        })
+
+    if len(upgraded) < 5:
+        raise RuntimeError(f"only {len(upgraded)} upgraded - too few for stats")
+
+    real = [u["real_avg"] for u in upgraded]
+    cheap = [u["cheap_sim_avg"] for u in upgraded]
+    full = [u["full_sim_avg"] for u in upgraded]
+    accepts = [int(u["accepted"]) for u in upgraded]
+    full_probs = [u["full_accept_prob"] for u in upgraded]
+
+    metrics = {
+        "n_boundary": len(upgraded),
+        "cheap_spearman_on_boundary": float(_spearman(real, cheap)),
+        "full_spearman_on_boundary": float(_spearman(real, full)),
+        "delta_spearman": float(_spearman(real, full) - _spearman(real, cheap)),
+        "full_auc_on_boundary": float(_auc(accepts, full_probs)) if len(set(accepts)) > 1 else float("nan"),
+        "cheap_bias": float(np.mean([c - r for c, r in zip(cheap, real)])),
+        "full_bias": float(np.mean([f - r for f, r in zip(full, real)])),
+    }
+    out = {
+        "config": {"n_requested": n, "model": model or REVIEW_MODEL, "from": str(prev_path)},
+        "metrics": metrics,
+        "pairs": upgraded,
+    }
+    save = PATHS.calibration / "calibration_boundary.json"
+    save.write_text(json.dumps(out, indent=2), encoding="utf-8")
+
+    print()
+    print("=" * 60)
+    print(f"BOUNDARY UPGRADE  (N={len(upgraded)}, model={model or REVIEW_MODEL})")
+    print("=" * 60)
+    print(f"  cheap Spearman on boundary:  {metrics['cheap_spearman_on_boundary']:+.3f}")
+    print(f"  full  Spearman on boundary:  {metrics['full_spearman_on_boundary']:+.3f}")
+    print(f"  Δ Spearman:                  {metrics['delta_spearman']:+.3f}")
+    print(f"  full AUC on boundary:        {metrics['full_auc_on_boundary']:+.3f}")
+    print(f"  cheap bias (sim - real):     {metrics['cheap_bias']:+.3f}")
+    print(f"  full  bias (sim - real):     {metrics['full_bias']:+.3f}")
+    print(f"\n  full result -> {save}")
+    return out

@@ -1,15 +1,21 @@
 """Normalize per-venue review schemas to a common shape.
 
-OpenReview review notes vary in field names and rating scales by venue and year:
-ICLR uses `rating` 1-10, NeurIPS sometimes uses `recommendation`, ICML's recent
-years use `soundness`/`presentation`/`contribution` (1-4), etc. This module
-hides those details so downstream code only sees a `NormalizedReview`.
+OpenReview review notes vary in field names and rating scales by venue and
+year (v1 vs v2, ICLR's `rating` vs NeurIPS's `recommendation` vs ICML 2025's
+structured fields, etc.). This module hides those differences so downstream
+code only sees a `NormalizedReview`.
+
+The schema-specific bits (which fields to look at, structured-critique field
+list) live in the venue registry — see `venues.py`. This module just executes
+the spec.
 """
 from __future__ import annotations
 
 import re
 from dataclasses import asdict, dataclass
 from typing import Any
+
+from .venues import VenueSpec, venue_id_to_spec
 
 
 @dataclass
@@ -38,7 +44,12 @@ class NormalizedDecision:
 
 
 def _val(content: dict | None, *keys: str) -> Any:
-    """Pull `content[key]['value']` for the first key that's present."""
+    """Pull `content[key]` for the first key present.
+
+    v1 stores content values directly: `content[key] = "..."`.
+    v2 wraps them: `content[key] = {"value": "..."}`.
+    Handle both.
+    """
     if not content:
         return None
     for k in keys:
@@ -63,46 +74,41 @@ def _rating_to_float(v: Any) -> float | None:
     return None
 
 
-_ICML_2025_CRITIQUE_FIELDS = (
-    "methods_and_evaluation_criteria",
-    "experimental_designs_or_analyses",
-    "theoretical_claims",
-    "essential_references_not_discussed",
-    "other_strengths_and_weaknesses",
-)
-
-
 def normalize_review(venue: str, forum_id: str, note: dict) -> NormalizedReview:
-    content = note.get("content", {})
-    rating = _rating_to_float(
-        _val(content, "rating", "recommendation", "overall_rating", "overall_recommendation")
-    )
-    # ICLR uses 1-10. NeurIPS sometimes 1-10. ICML's recent `recommendation` is 1-10.
-    # ICML 2025's `overall_recommendation` is 1-5; we rescale below. Older 1-5 venues too.
+    spec = venue_id_to_spec(venue)
+    content = note.get("content", {}) or {}
+    rating = _rating_to_float(_val(content, *(spec.rating_fields if spec else (
+        "rating", "recommendation", "overall_rating", "overall_recommendation",
+    ))))
+
+    # 1-5 scales (ICML 2025 'overall_recommendation', some older venues' 'overall_rating')
+    # rescale to 1-10 so downstream comparisons are apples-to-apples.
     if rating is not None and rating <= 5:
         if "overall_recommendation" in content or "overall_rating" in content:
-            rating = rating * 2  # 1-5 -> 2-10
+            rating = rating * 2
         elif "rating" not in content and "recommendation" not in content:
             rating = rating * 2
 
-    # ICML 2025 has no `weaknesses` field — critique is split across structured
-    # subsections. Concatenate them as the weaknesses block so downstream
-    # extraction sees one consistent field.
-    weaknesses = _val(content, "weaknesses", "limitations")
-    if not weaknesses:
-        parts = [s for f in _ICML_2025_CRITIQUE_FIELDS if (s := _val(content, f))]
+    weakness_keys = spec.weakness_fields if spec else ("weaknesses", "limitations", "strength_and_weaknesses")
+    weaknesses = _val(content, *weakness_keys)
+    if not weaknesses and spec and spec.structured_critique_fields:
+        parts = [s for f in spec.structured_critique_fields if (s := _val(content, f))]
         weaknesses = "\n\n".join(parts)
+
+    summary_keys = spec.summary_fields if spec else ("summary", "paper_summary", "summary_of_the_paper")
+    questions_keys = spec.questions_fields if spec else ("questions", "questions_for_authors")
+    confidence_keys = spec.confidence_fields if spec else ("confidence",)
 
     return NormalizedReview(
         venue=venue,
         forum_id=forum_id,
         review_id=note.get("id", ""),
-        summary=_val(content, "summary", "paper_summary") or "",
+        summary=_val(content, *summary_keys) or "",
         strengths=_val(content, "strengths", "strengths_and_weaknesses") or "",
         weaknesses=weaknesses or "",
-        questions=_val(content, "questions", "questions_for_authors") or "",
+        questions=_val(content, *questions_keys) or "",
         rating=rating,
-        confidence=_rating_to_float(_val(content, "confidence")),
+        confidence=_rating_to_float(_val(content, *confidence_keys)),
         soundness=_rating_to_float(_val(content, "soundness")),
         presentation=_rating_to_float(_val(content, "presentation")),
         contribution=_rating_to_float(_val(content, "contribution")),
@@ -116,7 +122,7 @@ _REJECT_TOKENS = ("reject", "withdraw", "desk reject")
 def normalize_decision(note: dict | None) -> NormalizedDecision:
     if note is None:
         return NormalizedDecision(accepted=None, raw="")
-    content = note.get("content", {})
+    content = note.get("content", {}) or {}
     raw = _val(content, "decision", "recommendation") or ""
     raw_l = str(raw).lower()
     if any(t in raw_l for t in _REJECT_TOKENS):
