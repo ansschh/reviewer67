@@ -144,7 +144,7 @@ def _cmd_train_predictor(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="paper-reviewer")
+    p = argparse.ArgumentParser(prog="reviewer67")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     s = sub.add_parser("scrape", help="Pull OpenReview venues into JSONL.")

@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "paper-reviewer"
+name = "reviewer67"
 version = "0.1.0"
-description = "Scrape OpenReview, mine reviewer rejection patterns, and run a multi-agent LLM review panel against your paper before submission."
+description = "Reviewer67 — pre-submission paper review tool grounded in real OpenReview data. Mines reviewer rejection patterns and runs a persona-conditioned LLM panel against your paper."
 requires-python = ">=3.10"
 readme = "README.md"
 dependencies = [
@@ -28,7 +28,8 @@ local-embed = ["sentence-transformers>=3.0"]
 dev = ["pytest>=8.0"]
 
 [project.scripts]
-paper-reviewer = "paper_reviewer.cli:main"
+reviewer67 = "paper_reviewer.cli:main"
+paper-reviewer = "paper_reviewer.cli:main"  # legacy alias
 
 [tool.setuptools.packages.find]
 where = ["src"]
