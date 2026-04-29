@@ -96,9 +96,10 @@ def plot_calibration_metrics():
     ax.errorbar(xs, vals, yerr=[los, his], fmt="none", ecolor=P["ink"],
                 elinewidth=1.0, capsize=6, capthick=1.0, alpha=0.7)
 
-    for x, v in zip(xs, vals):
-        ax.text(x, v + 0.04, f"{v:.3f}", ha="center", va="bottom",
-                fontsize=10, color=P["ink"], fontweight="bold")
+    # Place value labels ABOVE the upper CI bound so error-bar caps never sit on them.
+    for x, v, hi in zip(xs, vals, his):
+        ax.text(x, v + hi + 0.045, f"{v:.3f}", ha="center", va="bottom",
+                fontsize=10.5, color=P["ink"], fontweight="bold")
 
     ax.axhline(0.4, color=P["neutral"], linestyle="--", linewidth=0.8, alpha=0.6)
     ax.text(len(names) - 0.45, 0.42, "ρ ≥ 0.4 = useful signal",
@@ -107,7 +108,7 @@ def plot_calibration_metrics():
     ax.set_xticks(xs)
     ax.set_xticklabels([n for _, n, _ in names])
     ax.set_ylabel("score (1.0 = perfect)")
-    ax.set_ylim(0, 1.05)
+    ax.set_ylim(0, 1.20)  # extra headroom for labels above CI caps
     ax.set_title(f"Calibration on N={cal['n']} held-out OpenReview papers (95% bootstrap CI)",
                  loc="left", pad=12, fontsize=11.5, color=P["ink"])
     ax.yaxis.grid(True)
@@ -125,26 +126,32 @@ def plot_sim_vs_real():
     sim = np.array([p["sim_avg"] for p in pairs])
     accepted = np.array([p["accepted"] for p in pairs])
 
-    fig, ax = plt.subplots(figsize=(6.0, 5.5))
-    ax.scatter(real[accepted], sim[accepted], s=24, alpha=0.55,
+    fig, ax = plt.subplots(figsize=(6.4, 5.8))
+    ax.scatter(real[accepted], sim[accepted], s=26, alpha=0.55,
                color=P["accent"], edgecolor="none", label="Accepted")
-    ax.scatter(real[~accepted], sim[~accepted], s=24, alpha=0.55,
+    ax.scatter(real[~accepted], sim[~accepted], s=26, alpha=0.55,
                color=P["danger"], edgecolor="none", label="Rejected")
 
     lims = [min(real.min(), sim.min()) - 0.5, max(real.max(), sim.max()) + 0.5]
-    ax.plot(lims, lims, color=P["neutral"], linewidth=0.7, linestyle="--", alpha=0.7)
-    # Bias line: sim = real + bias
     bias = float(np.mean(sim - real))
-    ax.plot(lims, [l + bias for l in lims], color=P["primary"], linewidth=1.2, alpha=0.8,
-            label=f"mean offset ({bias:+.2f})")
+
+    # Two reference lines, both 45°, parallel:
+    #   dashed gray = perfect agreement (sim == real)
+    #   solid purple = actual mean (sim == real + bias), shifted by the −0.91 offset
+    ax.plot(lims, lims, color=P["neutral"], linewidth=1.0, linestyle="--", alpha=0.85,
+            label="perfect (y = x, 45°)")
+    ax.plot(lims, [l + bias for l in lims], color=P["primary"], linewidth=1.6, alpha=0.85,
+            label=f"actual mean (y = x − {abs(bias):.2f})")
 
     ax.set_xlim(lims)
     ax.set_ylim(lims)
     ax.set_xlabel("real reviewer avg rating")
     ax.set_ylabel("simulated avg rating")
-    ax.set_title("Simulated vs real rating", loc="left", pad=12, fontsize=11.5)
+    ax.set_title("Simulated vs real rating",
+                 loc="left", pad=18, fontsize=11.5)
     ax.set_aspect("equal")
-    ax.legend(loc="upper left", frameon=False, fontsize=9)
+    ax.legend(loc="upper left", frameon=True, fontsize=9,
+              facecolor="white", edgecolor="#e0e0e0", framealpha=0.95)
     ax.grid(True, alpha=0.7)
 
     plt.savefig(ASSETS / "sim_vs_real_scatter.png")
@@ -157,18 +164,21 @@ def plot_bias_histogram():
     cal = json.loads((DATA / "calibration" / "calibration.json").read_text(encoding="utf-8"))
     diffs = np.array([p["sim_avg"] - p["real_avg"] for p in cal["pairs"]])
 
-    fig, ax = plt.subplots(figsize=(7.0, 3.8))
+    fig, ax = plt.subplots(figsize=(7.4, 4.0))
     bins = np.arange(np.floor(diffs.min() * 2) / 2, np.ceil(diffs.max() * 2) / 2 + 0.5, 0.5)
-    ax.hist(diffs, bins=bins, color=P["primary"], alpha=0.85, edgecolor="white", linewidth=1.5)
+    counts, _, _ = ax.hist(diffs, bins=bins, color=P["primary"], alpha=0.85,
+                           edgecolor="white", linewidth=1.5)
     mean = float(np.mean(diffs))
     ax.axvline(0, color=P["neutral"], linewidth=0.8, linestyle="--", alpha=0.6)
     ax.axvline(mean, color=P["danger"], linewidth=1.5, label=f"mean = {mean:+.2f}")
     ax.set_xlabel("(simulated rating)  −  (real rating)")
     ax.set_ylabel("papers")
     ax.set_title("Bias distribution: simulator runs cold",
-                 loc="left", pad=12, fontsize=11.5)
-    ax.legend(loc="upper right", frameon=False, fontsize=10)
+                 loc="left", pad=18, fontsize=12)
+    ax.legend(loc="upper right", frameon=True, fontsize=10,
+              facecolor="white", edgecolor="#e0e0e0", framealpha=0.95)
     ax.yaxis.grid(True)
+    ax.set_ylim(0, counts.max() * 1.18)
 
     plt.savefig(ASSETS / "bias_histogram.png")
     plt.close()
@@ -184,7 +194,7 @@ def plot_boundary_comparison():
     cheap = np.array([p["cheap_sim_avg"] for p in pairs])
     full = np.array([p["full_sim_avg"] for p in pairs])
 
-    fig, ax = plt.subplots(figsize=(9.0, 4.4))
+    fig, ax = plt.subplots(figsize=(9.2, 4.7))
     xs = np.arange(n)
     w = 0.27
     ax.bar(xs - w, real, width=w, color=P["accent"], label="real reviewers", edgecolor="white", linewidth=1.0)
@@ -194,13 +204,14 @@ def plot_boundary_comparison():
     ax.set_xticks(xs)
     ax.set_xticklabels([p["forum_id"][:6] for p in pairs], rotation=45, ha="right", fontsize=8.5)
     ax.set_ylabel("avg rating")
-    ax.set_ylim(0, 10)
+    ax.set_ylim(0, 12)  # extra headroom so title + legend don't crowd the bars
     bias_cheap = float(np.mean(cheap - real))
     bias_full = float(np.mean(full - real))
     ax.set_title(f"Stage 3 boundary (N={n}) — Opus closes 31% of bias gap "
                  f"({bias_cheap:+.2f} → {bias_full:+.2f})",
-                 loc="left", pad=12, fontsize=11.5)
-    ax.legend(loc="upper right", frameon=False, fontsize=9.5, ncol=3)
+                 loc="left", pad=18, fontsize=12)
+    ax.legend(loc="upper right", frameon=True, fontsize=9.5, ncol=3,
+              facecolor="white", edgecolor="#e0e0e0", framealpha=0.95)
     ax.yaxis.grid(True)
 
     plt.savefig(ASSETS / "boundary_cheap_vs_full.png")
@@ -310,19 +321,28 @@ def plot_rating_dist():
     real = np.array([p["real_avg"] for p in cal["pairs"]])
     sim = np.array([p["sim_avg"] for p in cal["pairs"]])
 
-    fig, ax = plt.subplots(figsize=(7.5, 4.0))
+    fig, ax = plt.subplots(figsize=(7.8, 4.3))
     bins = np.arange(1, 10.5, 0.5)
-    ax.hist(real, bins=bins, color=P["accent"], alpha=0.7, label=f"real (μ={real.mean():.2f}, σ={real.std():.2f})",
+    ax.hist(real, bins=bins, color=P["accent"], alpha=0.7,
+            label=f"real (μ={real.mean():.2f}, σ={real.std():.2f})",
             edgecolor="white", linewidth=1.2)
-    ax.hist(sim, bins=bins, color=P["primary"], alpha=0.7, label=f"simulated (μ={sim.mean():.2f}, σ={sim.std():.2f})",
+    ax.hist(sim, bins=bins, color=P["primary"], alpha=0.7,
+            label=f"simulated (μ={sim.mean():.2f}, σ={sim.std():.2f})",
             edgecolor="white", linewidth=1.2)
     ax.set_xlabel("avg rating")
     ax.set_ylabel("papers")
-    ax.set_title("Rating distributions: real reviewers spread wider; simulator clusters in 4-5",
-                 loc="left", pad=12, fontsize=11.5)
-    ax.legend(loc="upper left", frameon=False, fontsize=10)
+    # Pad the title generously and add headroom so it never collides with bars.
+    ax.set_title("Rating distributions",
+                 loc="left", pad=18, fontsize=12)
+    # Place legend in the upper RIGHT (real-reviewer tail is sparser there → no overlap)
+    ax.legend(loc="upper right", frameon=True, fontsize=10,
+              facecolor="white", edgecolor="#e0e0e0", framealpha=0.95)
     ax.set_xticks(np.arange(1, 11, 1))
     ax.yaxis.grid(True)
+    # 15% headroom above the tallest bar so title + legend never crowd the data.
+    ymax = max(np.histogram(real, bins=bins)[0].max(),
+               np.histogram(sim, bins=bins)[0].max())
+    ax.set_ylim(0, ymax * 1.18)
 
     plt.savefig(ASSETS / "rating_distribution.png")
     plt.close()
