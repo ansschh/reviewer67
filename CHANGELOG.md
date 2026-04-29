@@ -18,8 +18,13 @@ Initial release.
 - SQLite-backed prompt-hash cache for chat + embeddings.
 - CLI: `scrape | mine | personas | review | calibrate | train-predictor`.
 
-### Calibration baseline
-Cheap recipe (N=198, Haiku 4.5, 2 reviewers): Spearman ρ=+0.434 [95% CI +0.32, +0.54], AUC=+0.811 [95% CI +0.75, +0.86], Jaccard top-3=+0.681. Simulator is conservatively biased (mean −0.91 vs real reviewers).
+### Calibration baselines
+
+**Stage 2 (cheap, N=198, Haiku 4.5, 2 reviewers):**
+Spearman ρ=+0.434 [95% CI +0.32, +0.54], AUC=+0.811 [95% CI +0.75, +0.86], Jaccard top-3=+0.681. Simulator conservatively biased (mean −0.91 vs real reviewers).
+
+**Stage 3 (boundary upgrade, N=20 worst-disagreement, Opus 4.7, 5 reviewers):**
+Production Opus panel closes 31% of the rating-bias gap (−3.40 → −2.33) on the hardest cases. AUC stays strong (+0.789) on this subset. Spearman drops to +0.17 due to range restriction (boundary papers cluster in real-rating [6.5, 9.0]) — not a real signal degradation, just a statistical artifact of the subset selection. Simulator is systematically pessimistic: every boundary case rated below its real score.
 
 ### Known limitations
 - ICML 2024 not on OpenReview publicly — skipped.

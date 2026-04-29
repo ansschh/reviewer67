@@ -27,8 +27,9 @@ Run with `claude-haiku-4-5-20251001`, 2 reviewers per panel, batch sync. Total c
 
 **Calibration caveats — read these:**
 - The simulator is **conservatively biased** (mean −0.91 vs real reviewers, std compressed 2.6×). Treat simulated ratings as a *lower bound*.
+- Production Opus panel closes ~31% of the bias gap on the worst-disagreement cases vs the Haiku 2-reviewer cheap recipe (Stage 3 boundary upgrade, N=20, residual bias −2.33).
 - Persona panels are mined from the same venues we calibrate against → mild data leakage. A held-out year is on the roadmap.
-- Production runs use `claude-opus-4-7`, which is likely better calibrated than the Haiku numbers above.
+- The simulator was *systematically pessimistic* on every one of the 20 boundary papers — never overrated real performance. Useful framing: a low simulated score is informative; a high one would have been more so.
 
 ## Quick start
 
